@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request
 
 from app.services.llm_service import get_ai_response, clear_history
 from app.services.whatsapp import send_message
+from app.services.image_service import download_wa_media, analyze_image
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +111,8 @@ async def receive_message(request: Request):
             try:
                 await send_message(
                     sender,
-                    "Eh sabar bestie 😭 gue butuh waktu buat mikir dulu~ "
-                    "tunggu bentar ya sekitar 1 menit baru chat lagi ok? 💕",
+                    "Sabar napa sih 🙄 spam banget sumpah, otak gue butuh waktu! "
+                    "Tunggu bentar semenit baru chat lagi, jangan berisik 🗣️",
                 )
             except Exception:
                 pass
@@ -120,10 +121,13 @@ async def receive_message(request: Request):
     # Get message text
     text = payload.get("body", "")
     msg_type = payload.get("type", "chat")
+    has_media = payload.get("hasMedia", False)
 
-    logger.info("Message from %s type=%s id=%s", sender, msg_type, msg_id)
+    logger.info("Message from %s type=%s id=%s hasMedia=%s", sender, msg_type, msg_id, has_media)
 
-    if not text:
+    is_media = msg_type == "image" or has_media
+
+    if not text and not is_media:
         return {"status": "ok"}
 
     # Handle special commands
@@ -132,24 +136,39 @@ async def receive_message(request: Request):
         try:
             await send_message(
                 sender,
-                "Done bestie! ✨ history chat kita udah gue clear. "
-                "Fresh start ya, so what's up? 💫",
+                "Udah gue clear ya history-nya. Kelakuan lo yang cringe kemaren udah gue lupain 💅 "
+                "So, nanya apaan lu sekarang?",
             )
         except Exception:
             pass
         return {"status": "ok"}
 
-    # Process text message
+    # Process message (image or text)
     try:
-        reply = await get_ai_response(sender, text)
-        await send_message(sender, reply)
-        logger.info("Reply sent to %s", sender)
+        if is_media:
+            # Download media
+            media_bytes = await download_wa_media(sender, msg_id)
+            if not media_bytes:
+                await send_message(
+                    sender, 
+                    "Aduh ngelag bentar, sumpah chat lo bikin gue eror 💀 coba ulang dong!",
+                )
+                return {"status": "ok"}
+            
+            # Analyze image
+            reply = await analyze_image(media_bytes, caption=text)
+            await send_message(sender, reply)
+            logger.info("Image reply sent to %s", sender)
+        else:
+            reply = await get_ai_response(sender, text)
+            await send_message(sender, reply)
+            logger.info("Reply sent to %s", sender)
     except Exception:
         logger.error("Failed to reply to %s:\n%s", sender, traceback.format_exc())
         try:
             await send_message(
                 sender,
-                "Aduh sorry banget, gue lagi error nih 😭 coba chat lagi ya bestie!",
+                "Aduh error nih gue, capek nanggepin lu 🥱 coba chat bentar lagi deh!",
             )
         except Exception:
             pass
