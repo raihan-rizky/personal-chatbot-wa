@@ -13,6 +13,18 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+def _get_mime_type(data: bytes) -> str | None:
+    """Detect image MIME type from magic bytes."""
+    if data.startswith(b'\xff\xd8'):
+        return "image/jpeg"
+    if data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return "image/png"
+    if data.startswith(b'RIFF') and data[8:12] == b'WEBP':
+        return "image/webp"
+    if data.startswith(b'GIF87a') or data.startswith(b'GIF89a'):
+        return "image/gif"
+    return None
+
 # ── Lazy-initialised vision LLM ─────────────────────────────────
 _vision_llm: ChatNebius | None = None
 
@@ -117,6 +129,12 @@ async def analyze_image(image_bytes: bytes, caption: str | None = None) -> str:
     logger.info("Vision LLM: Starting image analysis. Image size: %d bytes, caption: %s", len(image_bytes), caption)
     llm = _get_vision_llm()
 
+    # Detect real image type
+    mime_type = _get_mime_type(image_bytes)
+    if not mime_type:
+        logger.error("Vision LLM ERROR: Unsupported MIME type or invalid image data.")
+        return "Format gambar loo apaan sih? Gajelas banget, kirim pake JPG atau PNG napa 🙄"
+
     # Encode image to base64
     logger.info("Vision LLM: Encoding image to base64...")
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
@@ -135,7 +153,7 @@ async def analyze_image(image_bytes: bytes, caption: str | None = None) -> str:
                 {"type": "text", "text": user_text},
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"},
+                    "image_url": {"url": f"data:{mime_type};base64,{b64_image}"},
                 },
             ]
         ),
