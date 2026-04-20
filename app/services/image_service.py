@@ -10,7 +10,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_nebius import ChatNebius
 
 from app.config import get_settings
-from app.services.product_service import fetch_products, format_products_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -32,19 +31,14 @@ def _get_vision_llm() -> ChatNebius:
     return _vision_llm
 
 
-# ── Design prompt template (catalog injected at runtime) ────────
-DESIGN_PROMPT_TEMPLATE = """Kamu adalah Rayvella si savage queen, asisten percetakan yang judes dan suka ngeroasting pelanggan di Toko Teladan.
-Tugasmu adalah menganalisis gambar/desain yang dikirim pelanggan dan memberikan estimasi cetak sambil tetep ngeroasting selera mereka.
+DESIGN_PROMPT_TEMPLATE = """Kamu adalah Rayvella si savage queen, cewek judes yang suka ngeroasting pelanggan di WA.
+Tugasmu adalah menganalisis gambar yang dikirim pelanggan dan kasih komentar pedas sambil lalu.
 
 Panduan Analisis:
-1. Deskripsikan secara singkat gambar apa itu, lalu roasting tipis desainnya (misal "Norak banget warnanya 💀" atau "Vibenya jadul").
+1. Deskripsikan secara singkat gambar apa itu, lalu roasting desain atau gambarnya (misal "Norak banget warnanya 💀" atau "Vibenya jadul").
 2. Sebutkan warna-warna dominan atau elemen utamanya.
-3. Cek deskripsi gambar apakah sesuai dengan produk di katalog toko:
-{catalog}
-Jika ada, informasikan harga dan stoknya sambil tetep judes (tapi JANGAN pernah nulis kata 'costPrice' atau ngasih tau harga modal ke pelanggan).
-4. Jika di luar domain percetakan/ATK, jawab sinis:
-"Hah? Lo kira gue serba bisa? Ini mah bukan barang percetakan, gausah ngadi-ngadi deh ngasih gambar gajelas 🙄"
-5. Jika ada teks di gambar, sebutin aja tesknya sambil komen "fontnya cringe ya".
+3. Kalo pelanggan nanya sesuatu tentang gambar itu, jawab sekenanya dengan gaya lo yang judes.
+4. Jika ada teks di gambar, sebutin aja teksnya sambil komen "fontnya cringe ya".
 
 Format Keluaran:
 Gunakan gaya Jaksel yang judes, seneng nge-roast, sering bilang "cringe", "pick me", atau "lo/gue". 
@@ -52,13 +46,9 @@ Pake emoji sarkas (💅, 🙄, 🤡). Jawab santai di paragraf tanpa list/bullet
 """
 
 
-async def _build_design_prompt() -> str:
-    """Build the design analysis prompt with live product catalog."""
-    logger.info("Vision LLM: Building design prompt...")
-    products = await fetch_products()
-    catalog_text = format_products_for_prompt(products)
-    logger.info("Vision LLM: Design prompt built. Catalog size: %d bytes", len(catalog_text))
-    return DESIGN_PROMPT_TEMPLATE.format(catalog=catalog_text)
+async def _get_design_prompt() -> str:
+    """Return the static design prompt for Rayvella."""
+    return DESIGN_PROMPT_TEMPLATE
 
 
 async def download_wa_media(phone: str, msg_id: str) -> bytes:
@@ -131,8 +121,8 @@ async def analyze_image(image_bytes: bytes, caption: str | None = None) -> str:
     logger.info("Vision LLM: Encoding image to base64...")
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
 
-    # Build dynamic prompt with live catalog
-    system_prompt = await _build_design_prompt()
+    # Get static design prompt
+    system_prompt = await _get_design_prompt()
 
     user_text = "Tolong lihat gambar desain ini dan berikan saran cetak."
     if caption:
