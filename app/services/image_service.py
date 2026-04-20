@@ -63,19 +63,18 @@ async def _get_design_prompt() -> str:
     """Return the static design prompt for Rayvella."""
     return DESIGN_PROMPT_TEMPLATE
 
-PROFILE_ROAST_PROMPT = """Kamu adalah Rayvella si savage queen. 
-Seorang user ({user_name}) baru pertama kali ngechat lo. Tugas lo adalah ngeroasting dia based on foto profilnya.
+COMBINED_FIRST_TIME_PROMPT = """Kamu adalah Rayvella si savage queen.
+Seorang user ({user_name}) baru pertama kali ngechat lo.
+Pesan yang dia sampaikan: "{user_text}"
 
-Panduan:
-1. Deskripsiin singkat apa yang lo liat di fotonya (misal "muka burem", "foto pemandangan", "foto gelap", dsb).
-2. Langsung kasih roasting pedes merendahkan tapi asik.
-3. Kalo namanya rahasia/nggak ada, ledek kenapa dia sok misterius.
-4. Kalo lo ga dapet gambar (hitam/kosong), langsung babat abis bilang: "Ngapain lo ngechat gue pake akun ga ada fotonya? Sok misterius lu njir 🙄"
+Tugas lo saat ini (DALAM SATU BALASAN):
+1. Roasting pedes foto profilnya kalo ada. Kalo dia gak ada foto, roasting dia krn akun bodong. Kalo gaada nama, roasting dia.
+2. LANGSUNG jawab pertanyaan/pesan utamanya dengan ngegas judes. Kalo nanya hal teknis (coding, IT, dll), tolak mentah-mentah!
 
 Format Keluaran:
 Pake gaya Jaksel judes, savage (cringe, ngadi-ngadi, lo/gue).
 Gunakan MAKSIMAL 1 emoji sarkas saja, jangan lebay!
-WAJIB SANGAT PENDEK. MAKSIMAL 4 KALIMAT. Jangan bantu apa-apa, fokus roasting doang!
+WAJIB SANGAT PENDEK. MAKSIMAL 2 KALIMAT. Jangan kepanjangan!
 """
 
 async def download_image(url: str) -> bytes | None:
@@ -100,28 +99,29 @@ async def download_image(url: str) -> bytes | None:
         logger.error("Failed to download image from %s: %s", url, str(e))
     return None
 
-async def analyze_profile_picture(image_bytes: bytes | None, user_name: str) -> str:
-    """Analyze a user's profile picture or roast them for not having one."""
+async def analyze_first_interaction_text(pfp_bytes: bytes | None, user_name: str, text: str) -> str:
+    """Analyze a new user's profile picture AND their first text message simultaneously."""
     llm = _get_vision_llm()
     name_display = user_name if user_name else "Sok Misterius (ga ada nama)"
+    text_display = text if text.strip() else "(Cuma ngirim stiker/kosong)"
     
-    system_prompt = PROFILE_ROAST_PROMPT.format(user_name=name_display)
+    system_prompt = COMBINED_FIRST_TIME_PROMPT.format(user_name=name_display, user_text=text_display)
     
-    if not image_bytes:
-        prompt_text = f"Sistem: User bernama '{name_display}' baru chat pertama kali dan DIA GAK PUNYA FOTO PROFIL. Langsung roasting dia abis-abisan sesuai persona kamu!\n\nRayvella:"
+    if not pfp_bytes:
+        prompt_text = f"Sistem: User bernama '{name_display}' baru chat dengan pesan: '{text_display}'. DIA GAK PUNYA FOTO PROFIL. Roasting dia abis-abisan dan balas pesannya!\n\nRayvella:"
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=prompt_text)
         ]
     else:
-        mime_type = _get_mime_type(image_bytes) or "image/jpeg"
-        b64_image = base64.b64encode(image_bytes).decode("utf-8")
+        mime_type = _get_mime_type(pfp_bytes) or "image/jpeg"
+        b64_image = base64.b64encode(pfp_bytes).decode("utf-8")
         
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(
                 content=[
-                    {"type": "text", "text": f"Ini foto profilnya si {name_display}. Roasting abis-abisan fotonya!"},
+                    {"type": "text", "text": f"Ini foto profil si {name_display}. Roasting fotonya sekaligus balas pesannya: '{text_display}'"},
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:{mime_type};base64,{b64_image}"},
@@ -134,8 +134,8 @@ async def analyze_profile_picture(image_bytes: bytes | None, user_name: str) -> 
         response = await llm.ainvoke(messages)
         return str(response.content)
     except Exception as e:
-        logger.exception("PFP Roast Error: %s", str(e))
-        return "Buset nih orang baru nongol aja udah bikin sistem gue error 🙄 Muka lu kepanjangan kali ah!"
+        logger.exception("PFP Roast Combined Error: %s", str(e))
+        return "Buset nih orang baru nongol aja udah bikin sistem gue error 🙄 pala lo kepanjangan!"
 
 
 async def download_wa_media(phone: str, msg_id: str) -> bytes:

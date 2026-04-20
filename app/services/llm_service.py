@@ -135,6 +135,12 @@ def is_first_time(phone: str) -> bool:
     return phone not in _chat_history or len(_chat_history[phone]) == 0
 
 
+def mark_first_time_done(phone: str) -> None:
+    """Mark the user as seen using a dummy history entry so they don't get roasted multiple times."""
+    if len(_chat_history[phone]) == 0:
+        _chat_history[phone].append({"role": "internal", "content": "first_time_done"})
+
+
 def add_assistant_message(phone: str, msg: str) -> None:
     """Add an assistant message directly to the chat history."""
     _chat_history[phone].append({"role": "assistant", "content": msg})

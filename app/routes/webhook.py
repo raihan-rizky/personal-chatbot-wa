@@ -8,9 +8,9 @@ import time
 
 from fastapi import APIRouter, Request
 
-from app.services.llm_service import get_ai_response, clear_history, is_first_time
+from app.services.llm_service import get_ai_response, clear_history, is_first_time, mark_first_time_done, _chat_history
 from app.services.whatsapp import send_message, get_profile_picture_url
-from app.services.image_service import download_wa_media, analyze_image, download_image, analyze_profile_picture
+from app.services.image_service import download_wa_media, analyze_image, download_image, analyze_first_interaction_text
 
 logger = logging.getLogger(__name__)
 
@@ -143,21 +143,35 @@ async def receive_message(request: Request):
             pass
         return {"status": "ok"}
 
-    # Process PFP roast for first-time users
+    # Process unified PFP roast & response for first-time users
     if is_first_time(sender):
-        try:
-            logger.info("First time user %s detected, fetching PFP for roasting...", sender)
-            
-            user_data = payload.get("_data", {})
-            user_name = user_data.get("notifyName") or user_data.get("pushName") or ""
-            
-            pfp_url = await get_profile_picture_url(sender)
-            pfp_bytes = await download_image(pfp_url) if pfp_url else None
-            
-            pfp_roast = await analyze_profile_picture(pfp_bytes, user_name)
-            await send_message(sender, pfp_roast)
-        except Exception as e:
-            logger.error("Failed to process first-time PFP roast for %s: %s", sender, str(e))
+        mark_first_time_done(sender)
+        
+        user_data = payload.get("_data", {})
+        user_name = user_data.get("notifyName") or user_data.get("pushName") or ""
+        
+        if is_media:
+            # Skip PFP download to avoid dual-image confusion!
+            # Instead, we artificially inject a system instruction into their caption so the image-analyzer roasts them.
+            text = f"[Sistem: User bernama '{user_name}' pertama kali chat! Roasting dia sok asik, lalu komentarin fotonya!]\nPesan Asli: {text}"
+            logger.info("First time user %s sent media right away. Fallback to normal image analysis.", sender)
+        else:
+            try:
+                logger.info("First time user %s detected, combining PFP and text response...", sender)
+                pfp_url = await get_profile_picture_url(sender)
+                pfp_bytes = await download_image(pfp_url) if pfp_url else None
+                
+                reply = await analyze_first_interaction_text(pfp_bytes, user_name, text)
+                await send_message(sender, reply)
+                
+                # Append to actual memory properly
+                _chat_history[sender].append({"role": "user", "content": text})
+                _chat_history[sender].append({"role": "assistant", "content": reply})
+                
+                return {"status": "ok"}
+            except Exception as e:
+                logger.error("Failed unified PFP roast for %s: %s", sender, str(e))
+                # if failed, let it fall through to regular processing as a fallback
 
     # Process message (image or text)
     try:
