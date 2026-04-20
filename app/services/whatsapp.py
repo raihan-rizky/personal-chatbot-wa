@@ -22,6 +22,23 @@ def _get_headers(settings) -> dict[str, str]:
     return headers
 
 
+async def get_profile_picture_url(phone: str) -> str | None:
+    """Fetch the profile picture URL of a user from WAHA API."""
+    settings = get_settings()
+    chat_id = phone if "@" in phone else f"{phone}@c.us"
+    url = f"{settings.waha_base_url}/api/{settings.waha_session}/chats/{chat_id}/picture?refresh=false"
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.get(url, headers=_get_headers(settings))
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("url")
+        except Exception as e:
+            logger.warning("Failed to fetch PFP URL for %s: %s", phone, str(e))
+    return None
+
+
 async def send_message(to: str, body: str) -> None:
     """Send a text message to a WhatsApp user via WAHA.
 

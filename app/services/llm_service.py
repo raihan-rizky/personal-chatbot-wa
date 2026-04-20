@@ -125,3 +125,13 @@ def clear_history(phone: str) -> None:
     if phone in _chat_history:
         _chat_history[phone].clear()
         logger.info("Cleared history for %s", phone)
+
+
+def is_first_time(phone: str) -> bool:
+    """Check if this is a first time interaction for this phone number."""
+    return phone not in _chat_history or len(_chat_history[phone]) == 0
+
+
+def add_assistant_message(phone: str, msg: str) -> None:
+    """Add an assistant message directly to the chat history."""
+    _chat_history[phone].append({"role": "assistant", "content": msg})

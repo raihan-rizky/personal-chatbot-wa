@@ -62,6 +62,79 @@ async def _get_design_prompt() -> str:
     """Return the static design prompt for Rayvella."""
     return DESIGN_PROMPT_TEMPLATE
 
+PROFILE_ROAST_PROMPT = """Kamu adalah Rayvella si savage queen. 
+Seorang user ({user_name}) baru pertama kali ngechat lo. Tugas lo adalah ngeroasting dia based on foto profilnya.
+
+Panduan:
+1. Deskripsiin singkat apa yang lo liat di fotonya (misal "muka burem", "foto pemandangan", "foto gelap", dsb).
+2. Langsung kasih roasting pedes merendahkan tapi asik.
+3. Kalo namanya rahasia/nggak ada, ledek kenapa dia sok misterius.
+4. Kalo lo ga dapet gambar (hitam/kosong), langsung babat abis bilang: "Ngapain lo ngechat gue pake akun ga ada fotonya? Sok misterius lu njir 🙄"
+
+Format Keluaran:
+Pake gaya Jaksel judes, savage (cringe, ngadi-ngadi, lo/gue). Pake emoji sarkas 💅🙄🤡💀.
+Jawab singkat 1-3 kalimat aja, nyelekit. Jangan bantu apa-apa, fokus roasting doang!
+"""
+
+async def download_image(url: str) -> bytes | None:
+    """Download standard image directly from URL."""
+    try:
+        settings = get_settings()
+        if "localhost" in url or "127.0.0.1" in url:
+            from urllib.parse import urlparse
+            parsed_media = urlparse(url)
+            parsed_base = urlparse(settings.waha_base_url)
+            url = url.replace(f"{parsed_media.scheme}://{parsed_media.netloc}", f"{parsed_base.scheme}://{parsed_base.netloc}")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {}
+            if settings.waha_api_key:
+                headers["X-Api-Key"] = settings.waha_api_key
+
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return resp.content
+    except Exception as e:
+        logger.error("Failed to download image from %s: %s", url, str(e))
+    return None
+
+async def analyze_profile_picture(image_bytes: bytes | None, user_name: str) -> str:
+    """Analyze a user's profile picture or roast them for not having one."""
+    llm = _get_vision_llm()
+    name_display = user_name if user_name else "Sok Misterius (ga ada nama)"
+    
+    system_prompt = PROFILE_ROAST_PROMPT.format(user_name=name_display)
+    
+    if not image_bytes:
+        prompt_text = f"Sistem: User bernama '{name_display}' baru chat pertama kali dan DIA GAK PUNYA FOTO PROFIL. Langsung roasting dia abis-abisan sesuai persona kamu!\n\nRayvella:"
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=prompt_text)
+        ]
+    else:
+        mime_type = _get_mime_type(image_bytes) or "image/jpeg"
+        b64_image = base64.b64encode(image_bytes).decode("utf-8")
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(
+                content=[
+                    {"type": "text", "text": f"Ini foto profilnya si {name_display}. Roasting abis-abisan fotonya!"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime_type};base64,{b64_image}"},
+                    },
+                ]
+            ),
+        ]
+
+    try:
+        response = await llm.ainvoke(messages)
+        return str(response.content)
+    except Exception as e:
+        logger.exception("PFP Roast Error: %s", str(e))
+        return "Buset nih orang baru nongol aja udah bikin sistem gue error 🙄 Muka lu kepanjangan kali ah!"
+
 
 async def download_wa_media(phone: str, msg_id: str) -> bytes:
     """Download media from WAHA API by fetching recent chat messages."""

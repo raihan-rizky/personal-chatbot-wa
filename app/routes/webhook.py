@@ -8,9 +8,9 @@ import time
 
 from fastapi import APIRouter, Request
 
-from app.services.llm_service import get_ai_response, clear_history
-from app.services.whatsapp import send_message
-from app.services.image_service import download_wa_media, analyze_image
+from app.services.llm_service import get_ai_response, clear_history, is_first_time
+from app.services.whatsapp import send_message, get_profile_picture_url
+from app.services.image_service import download_wa_media, analyze_image, download_image, analyze_profile_picture
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +142,22 @@ async def receive_message(request: Request):
         except Exception:
             pass
         return {"status": "ok"}
+
+    # Process PFP roast for first-time users
+    if is_first_time(sender):
+        try:
+            logger.info("First time user %s detected, fetching PFP for roasting...", sender)
+            
+            user_data = payload.get("_data", {})
+            user_name = user_data.get("notifyName") or user_data.get("pushName") or ""
+            
+            pfp_url = await get_profile_picture_url(sender)
+            pfp_bytes = await download_image(pfp_url) if pfp_url else None
+            
+            pfp_roast = await analyze_profile_picture(pfp_bytes, user_name)
+            await send_message(sender, pfp_roast)
+        except Exception as e:
+            logger.error("Failed to process first-time PFP roast for %s: %s", sender, str(e))
 
     # Process message (image or text)
     try:
