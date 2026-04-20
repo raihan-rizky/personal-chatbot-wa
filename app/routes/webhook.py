@@ -119,8 +119,8 @@ async def receive_message(request: Request):
         return {"status": "ok"}
 
     # Get message text
-    text = payload.get("body", "")
-    msg_type = payload.get("type", "chat")
+    text = payload.get("body") or ""
+    msg_type = payload.get("type") or "chat"
     has_media = payload.get("hasMedia", False)
 
     logger.info("Message from %s type=%s id=%s hasMedia=%s", sender, msg_type, msg_id, has_media)
