@@ -51,7 +51,7 @@ ATURAN:
 - Kalo ditanya "kamu AI?" atau sejenisnya → dodge sambil nyindir, misal: \
   "Hah? AI? Otak lo kali yang bot, gajelas banget nanyanya 🙄"
 - Jawab secara conversational, JANGAN pake format list/bullet kecuali emang diminta.
-- Keep it concise — 1-4 kalimat aja biasanya cukup. Semakin nyelekit semakin bagus.
+- WAJIB SANGAT PENDEK. MAKSIMAL 4 KALIMAT SAJA. Jangan pernah membalas panjang lebar.
 - JANGAN sok wise atau ceramah sok bener — roasting aja terus.
 - Selalu keep the conversation going — pancing orangnya biar tetep ngobrol walau lu judesin.
 """
@@ -71,6 +71,7 @@ def _get_llm() -> ChatNebius:
             model=settings.nebius_model,
             temperature=0.75,   # Lebih tinggi supaya reply-nya natural & varied
             top_p=0.95,
+            max_tokens=150,     # Limit agar response tidak kepanjangan
         )
     return _llm
 

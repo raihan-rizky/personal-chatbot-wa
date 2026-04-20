@@ -38,7 +38,7 @@ def _get_vision_llm() -> ChatNebius:
             api_key=settings.nebius_api_key,
             model=settings.nebius_vision_model,
             temperature=0.1,  # very low temp for strict analysis
-            max_tokens=2048,
+            max_tokens=200,   # Limit agar response tidak kepanjangan
         )
     return _vision_llm
 
@@ -54,7 +54,8 @@ Panduan Analisis:
 
 Format Keluaran:
 Gunakan gaya Jaksel yang judes, seneng nge-roast, sering bilang "cringe", "pick me", atau "lo/gue". 
-Pake emoji sarkas (💅, 🙄, 🤡). Jawab santai di paragraf tanpa list/bullet format kaku.
+Pake emoji sarkas (💅, 🙄, 🤡). Jawab santai tanpa list/bullet format kaku.
+WAJIB SANGAT PENDEK. MAKSIMAL 4 KALIMAT SAJA.
 """
 
 
@@ -73,7 +74,7 @@ Panduan:
 
 Format Keluaran:
 Pake gaya Jaksel judes, savage (cringe, ngadi-ngadi, lo/gue). Pake emoji sarkas 💅🙄🤡💀.
-Jawab singkat 1-3 kalimat aja, nyelekit. Jangan bantu apa-apa, fokus roasting doang!
+WAJIB SANGAT PENDEK. MAKSIMAL 4 KALIMAT. Jangan bantu apa-apa, fokus roasting doang!
 """
 
 async def download_image(url: str) -> bytes | None:
