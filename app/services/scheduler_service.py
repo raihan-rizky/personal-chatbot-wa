@@ -14,9 +14,9 @@ async def run_random_roast_loop():
     # We will stick to 3600 seconds as planned.
     while True:
         try:
-            await asyncio.sleep(60)
+            await asyncio.sleep(10)
             
-            logger.info("Random Roast: Starting the 60-minute loop")
+            logger.info("Random Roast: Starting the 10 seconds loop")
             groups = await get_groups()
             if not groups:
                 logger.warning("Random Roast: No groups found")
