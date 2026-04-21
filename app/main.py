@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import logging
 
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.routes.webhook import router as webhook_router
+from app.services.scheduler_service import run_random_roast_loop
 
 # ── Logging ──────────────────────────────────────────────────────
 logging.basicConfig(
@@ -16,10 +20,22 @@ logging.basicConfig(
 )
 
 # ── FastAPI app ──────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle manager for FastAPI to run background tasks."""
+    bg_task = asyncio.create_task(run_random_roast_loop())
+    yield
+    bg_task.cancel()
+    try:
+        await bg_task
+    except asyncio.CancelledError:
+        pass
+
 app = FastAPI(
     title="Rayvella — Personal WhatsApp Chatbot",
     description="A warm, trendy, and friendly personal AI chatbot on WhatsApp.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.include_router(webhook_router)

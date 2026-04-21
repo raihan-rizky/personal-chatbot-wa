@@ -246,3 +246,55 @@ async def analyze_image(image_bytes: bytes, caption: str | None = None) -> str:
         logger.exception("Vision LLM ERROR: Vision model call failed. Exception: %s", str(e))
         return "Ngelag njir, gambar lo buriq banget difoto pake apaan sih 🤡 coba ulang kirim yang bener!"
 
+
+COMBINED_GROUP_ROAST_PROMPT = """Kamu adalah Rayvella si savage queen.
+Kamu lagi gabut di grup dan milih satu orang random dengan nomor: {phone_number} buat di-roast.
+
+Tugas lo saat ini:
+1. Tag orangnya (SELALU tulis @{phone_number} di awal pesan lu biar dia ke-notice).
+2. Kalo dia ada foto profil, roasting abis-abisan foto profilnya (baju, muka, atau gayanya).
+3. Kalo dia GAK ADA foto profil, roasting dia krn akun bodong, sok misterius, atau apalah.
+4. Cukup nge-roast aja santai, layaknya anak Jaksel pinggiran nyiyir bareng bestie.
+
+Format Keluaran:
+Pake gaya Jaksel judes, savage (cringe, ngadi-ngadi, lo/gue).
+Gunakan MAKSIMAL 1 emoji sarkas saja.
+WAJIB PENDEK. MAKSIMAL 3 KALIMAT.
+"""
+
+async def analyze_group_participant_roast(pfp_bytes: bytes | None, chat_id: str) -> str:
+    """Analyze a group participant's profile picture and generate a roast."""
+    llm = _get_vision_llm()
+    phone_number = chat_id.split('@')[0]
+    
+    system_prompt = COMBINED_GROUP_ROAST_PROMPT.format(phone_number=phone_number)
+    
+    if not pfp_bytes:
+        prompt_text = f"Sistem: Orang dengan nomor '@{phone_number}' INI GAK PUNYA FOTO PROFIL. Roasting dia abis-abisan di depan grup!\n\nRayvella:"
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=prompt_text)
+        ]
+    else:
+        mime_type = _get_mime_type(pfp_bytes) or "image/jpeg"
+        b64_image = base64.b64encode(pfp_bytes).decode("utf-8")
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(
+                content=[
+                    {"type": "text", "text": f"Ini foto profil dari '@{phone_number}'. Roasting fotonya di depan grup!"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime_type};base64,{b64_image}"},
+                    },
+                ]
+            ),
+        ]
+
+    try:
+        response = await llm.ainvoke(messages)
+        return str(response.content)
+    except Exception as e:
+        logger.exception("Group PFP Roast Combined Error: %s", str(e))
+        return f"Eh @{phone_number}, foto lo burik banget sampe bikin mata gue sliwer 🙄 ganti napa!"
