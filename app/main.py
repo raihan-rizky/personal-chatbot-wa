@@ -7,7 +7,6 @@ import logging
 from fastapi import FastAPI
 
 from app.routes.webhook import router as webhook_router
-from app.services.scheduler_service import trigger_random_roast
 
 # ── Logging ──────────────────────────────────────────────────────
 logging.basicConfig(
@@ -25,12 +24,6 @@ app = FastAPI(
 
 app.include_router(webhook_router)
 
-
-@app.get("/cron/roast")
-async def cron_roast():
-    """Vercel Cron endpoint to trigger the random group roast."""
-    result = await trigger_random_roast()
-    return result
 
 @app.get("/")
 async def health_check():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import traceback
 import time
 
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Request
 
 from app.services.llm_service import get_ai_response, clear_history, is_first_time, mark_first_time_done, _chat_history
 from app.services.whatsapp import send_message, get_profile_picture_url
-from app.services.image_service import download_wa_media, analyze_image, download_image, analyze_first_interaction_text
+from app.services.image_service import download_wa_media, analyze_image, download_image, analyze_first_interaction_text, analyze_group_participant_roast
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,45 @@ def is_rate_limited(phone: str) -> bool:
     return False
 
 
+def _extract_roast_target(text: str, payload: dict) -> str | None:
+    """Extract the target phone number from a .roast command.
+    
+    Supports:
+      - .roast @6281234567890
+      - .roast 6281234567890
+      - WAHA mentionedIds from payload
+    """
+    # Try to get mentioned IDs from WAHA payload first
+    mentioned_ids = payload.get("mentionedIds") or []
+    if not mentioned_ids:
+        # Also check nested _data
+        vcard_data = payload.get("_data", {})
+        mentioned_ids = vcard_data.get("mentionedJidList") or []
+
+    if mentioned_ids:
+        # Use the first mentioned ID
+        target = mentioned_ids[0]
+        if isinstance(target, dict):
+            target = target.get("_serialized", target.get("user", ""))
+        target = str(target)
+        # Normalize to @c.us format
+        if "@s.whatsapp.net" in target:
+            target = target.replace("@s.whatsapp.net", "@c.us")
+        elif "@lid" in target:
+            target = target.replace("@lid", "@c.us")
+        elif "@" not in target:
+            target = f"{target}@c.us"
+        return target
+
+    # Fallback: parse the number from the text itself
+    # Match .roast @<number> or .roast <number>
+    match = re.search(r'\.roast\s+@?(\d{7,15})', text, re.IGNORECASE)
+    if match:
+        return f"{match.group(1)}@c.us"
+
+    return None
+
+
 # ── Incoming messages ────────────────────────────────────────────
 @router.post("/webhook")
 async def receive_message(request: Request):
@@ -70,30 +110,31 @@ async def receive_message(request: Request):
 
     msg_id = payload.get("id", "")
     sender_jid = payload.get("from", "")
+    is_group = "@g.us" in sender_jid
 
     # Handle WAHA lid addressing to get real WhatsApp number
     keys_data = payload.get("_data", {}).get("key", {})
-    if "remoteJidAlt" in keys_data:
-        alt_jid = keys_data["remoteJidAlt"]
-        if "@s.whatsapp.net" in alt_jid:
-            sender_jid = alt_jid.replace("@s.whatsapp.net", "@c.us")
-    elif "remoteJid" in keys_data:
-        remote_jid = keys_data["remoteJid"]
-        if "@s.whatsapp.net" in remote_jid:
-            sender_jid = remote_jid.replace("@s.whatsapp.net", "@c.us")
+    
+    if not is_group:
+        if "remoteJidAlt" in keys_data:
+            alt_jid = keys_data["remoteJidAlt"]
+            if "@s.whatsapp.net" in alt_jid:
+                sender_jid = alt_jid.replace("@s.whatsapp.net", "@c.us")
+        elif "remoteJid" in keys_data:
+            remote_jid = keys_data["remoteJid"]
+            if "@s.whatsapp.net" in remote_jid:
+                sender_jid = remote_jid.replace("@s.whatsapp.net", "@c.us")
 
-    if "@s.whatsapp.net" in sender_jid:
-        sender_jid = sender_jid.replace("@s.whatsapp.net", "@c.us")
+        if "@s.whatsapp.net" in sender_jid:
+            sender_jid = sender_jid.replace("@s.whatsapp.net", "@c.us")
 
-    # Ignore group messages and status broadcasts
-    if "@g.us" in sender_jid or "status@broadcast" in sender_jid:
+    # Ignore status broadcasts
+    if "status@broadcast" in sender_jid:
         return {"status": "ok"}
 
     # Ignore messages sent by the bot itself
     if payload.get("fromMe", False):
         return {"status": "ok"}
-
-    sender = sender_jid.replace("@c.us", "")
 
     # Deduplicate
     if msg_id in _processed_ids:
@@ -102,6 +143,49 @@ async def receive_message(request: Request):
     _processed_ids.add(msg_id)
     if len(_processed_ids) > 1000:
         _processed_ids.clear()
+
+    # Get message text
+    text = payload.get("body") or ""
+
+    # ── GROUP: Handle .roast command ─────────────────────────────
+    if is_group:
+        group_id = sender_jid  # The group JID
+        
+        if text.strip().lower().startswith(".roast"):
+            logger.info("Group roast command detected in %s", group_id)
+            
+            target_chat_id = _extract_roast_target(text, payload)
+            if not target_chat_id:
+                await send_message(
+                    group_id,
+                    "Lo mau roasting siapa? Pake format: .roast @nomorwa\nContoh: .roast @6281234567890 🙄",
+                )
+                return {"status": "ok"}
+            
+            try:
+                pfp_url = await get_profile_picture_url(target_chat_id)
+                pfp_bytes = await download_image(pfp_url) if pfp_url else None
+                
+                roast_msg = await analyze_group_participant_roast(pfp_bytes, target_chat_id)
+                roast_msg += "\n\n_Ini dibuat dari AI, kalo merasa ganggu atau mau diroasting secara private, pm aku yah_"
+                
+                await send_message(group_id, roast_msg)
+                logger.info("Group roast sent to %s targeting %s", group_id, target_chat_id)
+            except Exception:
+                logger.error("Failed group roast in %s:\n%s", group_id, traceback.format_exc())
+                try:
+                    await send_message(
+                        group_id,
+                        "Aduh error nih gue, targetnya kebagusan sampe sistem gue nge-crash 💀",
+                    )
+                except Exception:
+                    pass
+        
+        # Ignore all other group messages
+        return {"status": "ok"}
+
+    # ── PRIVATE CHAT FLOW (unchanged) ────────────────────────────
+    sender = sender_jid.replace("@c.us", "")
 
     # Rate limiter
     if is_rate_limited(sender):
@@ -118,8 +202,6 @@ async def receive_message(request: Request):
                 pass
         return {"status": "ok"}
 
-    # Get message text
-    text = payload.get("body") or ""
     msg_type = payload.get("type") or "chat"
     has_media = payload.get("hasMedia", False)
 

@@ -43,7 +43,7 @@ async def send_message(to: str, body: str) -> None:
     """Send a text message to a WhatsApp user via WAHA.
 
     Args:
-        to: Recipient phone number (e.g. ``"6281234567890"``).
+        to: Recipient phone number (e.g. ``"6281234567890"``) or group ID.
         body: The text content to send.
     """
     settings = get_settings()
@@ -70,51 +70,3 @@ async def send_message(to: str, body: str) -> None:
             response.raise_for_status()
 
         logger.info("Message sent to %s", to)
-
-
-async def get_groups() -> list[dict]:
-    """Fetch all groups the bot is part of."""
-    settings = get_settings()
-    url = f"{settings.waha_base_url}/api/{settings.waha_session}/groups"
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.get(url, headers=_get_headers(settings))
-            if response.status_code == 200:
-                data = response.json()
-                # If WAHA returns an array or an object of objects
-                # Based on user payload, it returns an object of objects
-                if isinstance(data, dict):
-                    return list(data.values())
-                if isinstance(data, list):
-                    return data
-            else:
-                logger.error("Failed to fetch groups: HTTP %s", response.status_code)
-        except Exception as e:
-            logger.exception("Error fetching groups: %s", str(e))
-    return []
-
-
-async def get_group_participants(group_id: str) -> list[dict]:
-    """Fetch participants of a specific group."""
-    import urllib.parse
-    settings = get_settings()
-    
-    encoded_group_id = urllib.parse.quote(group_id)
-    url = f"{settings.waha_base_url}/api/{settings.waha_session}/groups/{encoded_group_id}/participants/v2"
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.get(url, headers=_get_headers(settings))
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    return data
-                elif isinstance(data, dict) and "participants" in data:
-                    return data["participants"]
-                return data
-            else:
-                logger.error("Failed to fetch group %s participants: HTTP %s", group_id, response.status_code)
-        except Exception as e:
-            logger.exception("Error fetching participants for group %s: %s", group_id, str(e))
-    return []
