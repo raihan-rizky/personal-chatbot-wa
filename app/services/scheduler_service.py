@@ -50,6 +50,9 @@ async def trigger_random_roast():
         
         roast_msg = await analyze_group_participant_roast(pfp_bytes, chat_id)
         
+        # Append disclaimer
+        roast_msg += "\n\n_Ini dibuat dari AI, kalo merasa ganggu atau mau diroasting secara private, pm aku yah_"
+        
         await send_message(group_id, roast_msg)
         logger.info("Random Roast: Successfully sent roast to group %s", group_id)
         return {"status": "success", "group_id": group_id, "chat_id": chat_id}
