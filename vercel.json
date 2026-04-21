@@ -21,5 +21,11 @@
       "src": "/(.*)",
       "dest": "app/main.py"
     }
+  ],
+  "crons": [
+    {
+      "path": "/cron/roast",
+      "schedule": "0 * * * *"
+    }
   ]
 }
